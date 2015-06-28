@@ -109,20 +109,10 @@ fn unpack(formats: &[UnpackFormat], path: &Path) -> Result<(), UnpackError> {
 
 #[cfg_attr(test, allow(dead_code))]
 fn main() {
-    let formats = [
-        UnpackFormat {
-            extension: ".zip".into(),
-            invocation: vec!["unzip".into()]
-        },
-        UnpackFormat {
-            extension: ".tar.gz".into(),
-            invocation: vec!["tar".into(), "xfz".into()]
-        },
-        UnpackFormat {
-            extension: ".tar".into(),
-            invocation: vec!["tar".into(), "xf".into()]
-        },
-    ];
+    let formats = match config::load() {
+        Ok(formats) => formats,
+        Err(e) => panic!("error loading config: {:?}", e)
+    };
 
     for arg in args_os().skip(1) {
         unpack(&formats, arg.as_ref()).unwrap();
