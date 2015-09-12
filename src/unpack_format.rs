@@ -32,7 +32,7 @@ impl UnpackFormat {
 }
 
 #[cfg(test)]
-mod test_unpack_format {
+mod test {
     use super::UnpackFormat;
 
     fn some_formats() -> Vec<UnpackFormat> {

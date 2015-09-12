@@ -114,4 +114,17 @@ fn parse_format_line(line: String) -> MyResult<UnpackFormat> {
     }
 }
 
+#[cfg(test)]
+mod test {
+    use super::parse_format_line;
+    use unpack_format::UnpackFormat;
 
+    #[test]
+    fn test_parse() {
+        assert!(parse_format_line("foo".into()).is_err());
+        assert!(parse_format_line("foo:".into()).is_err());
+        assert!(parse_format_line("foo: ".into()).is_err());
+        assert_eq!(parse_format_line("x: y z".into()).unwrap(),
+            UnpackFormat { extension: "x".into(), invocation: vec!["y".into(), "z".into()] });
+    }
+}
