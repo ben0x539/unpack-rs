@@ -65,18 +65,20 @@ fn unpack(formats: &[UnpackFormat], path: &Path) -> Result<(), UnpackError> {
     };
 
     let format = try!(UnpackFormat::find(formats, file_name).ok_or_else(
-        || <UnpackError as From<_>>::from(BadFormat::new(path))));
+        || UnpackError::from(BadFormat::new(path))));
 
     let dir = try!(TempDir::new_in(".", ".unpack"));
 
     let mut adjusted_path = PathBuf::new();
     adjusted_path.push("..");
     adjusted_path.push(path);
+
     let mut cmd = Command::new(&format.invocation[0]);
     cmd.args(&format.invocation[1..]);
     cmd.arg(&adjusted_path);
     cmd.current_dir(dir.path());
     cmd.stdout(std::process::Stdio::null());
+
     let status = try!(try!(cmd.spawn()).wait());
     if !status.success() {
         return Err(From::from(status));
@@ -111,7 +113,7 @@ fn unpack(formats: &[UnpackFormat], path: &Path) -> Result<(), UnpackError> {
 fn main() {
     let formats = match config::load() {
         Ok(formats) => formats,
-        Err(e) => panic!("error loading config: {:?}", e)
+        Err(e) => panic!("error loading config: {}", e)
     };
 
     for arg in args_os().skip(1) {
