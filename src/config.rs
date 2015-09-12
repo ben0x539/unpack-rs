@@ -3,7 +3,9 @@ use std::env;
 use std::path::PathBuf;
 use std::fs::File;
 use std::io::ErrorKind;
-use std::io::Read;
+use std::io::BufReader;
+use std::io::BufRead;
+use std::iter::FromIterator;
 
 use unpack_format::UnpackFormat;
 
@@ -13,8 +15,10 @@ error_type! {
         Io(std::io::Error) {
             cause;
         },
-        ParseError(&'static str) {
-            desc (e) e;
+        ParseError(String) {
+            desc (_e) "bad line in config file";
+            disp (e, fmt)
+                write!(fmt, "bad line in config file: {}", e);
         }
     }
 }
@@ -49,16 +53,23 @@ fn load_from_file() -> MyResult<Option<Vec<UnpackFormat>>> {
         Some(path) => path,
         None => return Ok(None)
     };
-    let mut file = match File::open(path) {
+    let file = match File::open(path) {
         Err(ref e) if e.kind() == ErrorKind::NotFound => return Ok(None),
         r => try!(r)
     };
-    let mut s = String::new();
-    try!(file.read_to_string(&mut s));
 
-    let cfg = try!(parse_config(&*s));
+    let mut formats: Vec<_> = try!(MyResult::from_iter(
+        BufReader::new(file)
+            .lines()
+            .map(|line|
+                line
+                    .map_err(|e| e.into())
+                    .and_then(parse_format_line))
+    ));
 
-    Ok(Some(cfg))
+    formats.sort_by(|a, b| Ord::cmp(&b.extension.len(), &a.extension.len()));
+
+    Ok(Some(formats))
 }
 
 fn get_path() -> Option<PathBuf> {
@@ -79,6 +90,28 @@ fn get_path() -> Option<PathBuf> {
     })
 }
 
-fn parse_config(_s: &str) -> MyResult<Vec<UnpackFormat>> {
-    Ok(vec![])
+fn parse_format_line(line: String) -> MyResult<UnpackFormat> {
+    return match try_to_parse(&*line) {
+        Some(format) => Ok(format),
+        None => Err(line.into())
+    };
+
+    fn try_to_parse(s: &str) -> Option<UnpackFormat> {
+        split_at_colon_spaces(s).map(|(extension, invocation)| {
+            let invocation =
+                invocation.split(space).filter(|&s| s != "").map(Into::into).collect();
+            UnpackFormat { extension: extension.into(), invocation: invocation }
+        })
+    }
+
+    fn space(c: char) -> bool { c == ' ' || c == '\t' }
+
+    fn split_at_colon_spaces(s: &str) -> Option<(&str, &str)> {
+        s.find(':').and_then(|p| {
+            let rest = &s[p + 1..];
+            rest.find(|c| !space(c)).map(|q| (&s[0..p], &rest[q..]))
+        })
+    }
 }
+
+
