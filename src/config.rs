@@ -25,7 +25,7 @@ error_type! {
 
 pub type MyResult<T> = Result<T, ConfigLoadError>;
 
-const CONFIG_FILE_NAME: &'static str = "unpack-rs.conf";
+const CONFIG_FILE_PATH: &'static str = "unpack-rs/formats";
 
 pub fn load() -> MyResult<Vec<UnpackFormat>> {
     let config = try!(load_from_file()).unwrap_or_else(|| {
@@ -85,7 +85,7 @@ fn get_path() -> Option<PathBuf> {
             p
         })
     }).map(|mut p| {
-        p.push(CONFIG_FILE_NAME);
+        p.push(CONFIG_FILE_PATH);
         p
     })
 }
