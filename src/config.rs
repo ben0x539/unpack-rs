@@ -9,16 +9,40 @@ use std::iter::FromIterator;
 
 use unpack_format::UnpackFormat;
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum BadLine {
+    NoColon,
+    EmptyExtension,
+    EmptyInvocation
+}
+
+impl BadLine {
+    fn desc(&self) -> &'static str {
+        match *self {
+            BadLine::NoColon =>
+                "bad line in config file: \
+                 missing colon separating extension \
+                 from unpack invocation",
+            BadLine::EmptyExtension =>
+                "bad line in config file: \
+                 no extension given",
+            BadLine::EmptyInvocation =>
+                "bad line in config file: \
+                 no invocation given after extension"
+        }
+    }
+}
+
 error_type! {
     #[derive(Debug)]
     pub enum ConfigLoadError {
         Io(std::io::Error) {
             cause;
         },
-        ParseError(String) {
-            desc (_e) "bad line in config file";
+        ParseError((String, BadLine)) {
+            desc (e) e.1.desc();
             disp (e, fmt)
-                write!(fmt, "bad line in config file: {}", e);
+                write!(fmt, "{}\nline was: {}", e.1.desc(), e.0);
         }
     }
 }
@@ -73,44 +97,44 @@ fn load_from_file() -> MyResult<Option<Vec<UnpackFormat>>> {
 }
 
 fn get_path() -> Option<PathBuf> {
-    env::var_os("XDG_CONFIG_HOME").map(|config| {
-        let mut p = PathBuf::new();
-        p.push(config);
+    let mut p = if let Some(config) = env::var_os("XDG_CONFIG_HOME") {
+        config.into()
+    } else if let Some(home) = env::var_os("HOME") {
+        let mut p = PathBuf::from(home);
+        p.push(".config");
         p
-    }).or_else(|| {
-        env::var_os("HOME").map(|home| {
-            let mut p = PathBuf::new();
-            p.push(home);
-            p.push(".config");
-            p
-        })
-    }).map(|mut p| {
-        p.push(CONFIG_FILE_PATH);
-        p
-    })
+    } else {
+        return None;
+    };
+
+    p.push(CONFIG_FILE_PATH);
+    Some(p)
 }
 
 fn parse_format_line(line: String) -> MyResult<UnpackFormat> {
-    return match try_to_parse(&*line) {
-        Some(format) => Ok(format),
-        None => Err(line.into())
-    };
+    return parse(&*line).map_err(|e| (line, e).into());
 
-    fn try_to_parse(s: &str) -> Option<UnpackFormat> {
-        split_at_colon_spaces(s).map(|(extension, invocation)| {
-            let invocation =
-                invocation.split(space).filter(|&s| s != "").map(Into::into).collect();
-            UnpackFormat { extension: extension.into(), invocation: invocation }
-        })
-    }
+    fn parse(line: &str) -> Result<UnpackFormat, BadLine>  {
+        let p = try!(line.find(':').ok_or(BadLine::NoColon));
+        if line[..p].trim() == "" {
+            return Err(BadLine::EmptyExtension);
+        }
 
-    fn space(c: char) -> bool { c == ' ' || c == '\t' }
+        let q = p + 1 + try!(
+            line[p + 1..].find(|c: char| !c.is_whitespace())
+                .ok_or(BadLine::EmptyInvocation));
 
-    fn split_at_colon_spaces(s: &str) -> Option<(&str, &str)> {
-        s.find(':').and_then(|p| {
-            let rest = &s[p + 1..];
-            rest.find(|c| !space(c)).map(|q| (&s[0..p], &rest[q..]))
-        })
+        let r = line[q..].find('#').map(|r| r + q).unwrap_or(line.len());
+        if q == r { return Err(BadLine::EmptyInvocation); };
+
+        let ext = line[0..p].trim();
+        let rest = &line[q..r].trim();
+        // todo: maybe take shell expansion semantics into account and support
+        // non-final path parameter positions?
+        let tokens = rest.split(char::is_whitespace);
+        let invocation = tokens.filter(|&s| s != "").map(Into::into).collect();
+
+        Ok(UnpackFormat { extension: ext.into(), invocation: invocation })
     }
 }
 
@@ -124,7 +148,13 @@ mod test {
         assert!(parse_format_line("foo".into()).is_err());
         assert!(parse_format_line("foo:".into()).is_err());
         assert!(parse_format_line("foo: ".into()).is_err());
+        assert!(parse_format_line("foo: #".into()).is_err());
+        assert!(parse_format_line(": bar".into()).is_err());
+        let sample = 
+            UnpackFormat { extension: "x".into(), invocation: vec!["y".into(), "z".into()] };
         assert_eq!(parse_format_line("x: y z".into()).unwrap(),
-            UnpackFormat { extension: "x".into(), invocation: vec!["y".into(), "z".into()] });
+            sample);
+        assert_eq!(parse_format_line(" x  :    y   z # aaa ".into()).unwrap(),
+            sample);
     }
 }
