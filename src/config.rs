@@ -82,9 +82,17 @@ fn load_from_file() -> MyResult<Option<Vec<UnpackFormat>>> {
         r => try!(r)
     };
 
+    fn is_err_or_not_empty(result: &Result<String, std::io::Error>) -> bool {
+        result.as_ref().map(|line| {
+            let end = line.find('#').unwrap_or(line.len());
+            !line[..end].is_empty()
+        }).unwrap_or(true)
+    }
+
     let mut formats: Vec<_> = try!(MyResult::from_iter(
         BufReader::new(file)
             .lines()
+            .filter(is_err_or_not_empty)
             .map(|line|
                 line
                     .map_err(|e| e.into())
