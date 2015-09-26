@@ -158,7 +158,7 @@ mod test {
         assert!(parse_format_line("foo: ".into()).is_err());
         assert!(parse_format_line("foo: #".into()).is_err());
         assert!(parse_format_line(": bar".into()).is_err());
-        let sample = 
+        let sample =
             UnpackFormat { extension: "x".into(), invocation: vec!["y".into(), "z".into()] };
         assert_eq!(parse_format_line("x: y z".into()).unwrap(),
             sample);

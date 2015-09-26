@@ -5,8 +5,9 @@ extern crate error_type;
 
 use std::path::{Path, PathBuf};
 use std::env::args_os;
-use std::process::Command;
+use std::process;
 use std::fs::{read_dir, remove_dir, rename};
+use std::io::Write;
 
 use tempdir::TempDir;
 
@@ -54,6 +55,8 @@ error_type! {
         },
         Child(std::process::ExitStatus) {
             desc (_e) "child exited unsuccessfully";
+        },
+        Config(config::ConfigLoadError) {
         }
     }
 }
@@ -73,7 +76,7 @@ fn unpack(formats: &[UnpackFormat], path: &Path) -> Result<(), UnpackError> {
     adjusted_path.push("..");
     adjusted_path.push(path);
 
-    let mut cmd = Command::new(&format.invocation[0]);
+    let mut cmd = process::Command::new(&format.invocation[0]);
     cmd.args(&format.invocation[1..]);
     cmd.arg(&adjusted_path);
     cmd.current_dir(dir.path());
@@ -111,12 +114,17 @@ fn unpack(formats: &[UnpackFormat], path: &Path) -> Result<(), UnpackError> {
 
 #[cfg_attr(test, allow(dead_code))]
 fn main() {
-    let formats = match config::load() {
-        Ok(formats) => formats,
-        Err(e) => panic!("error loading config: {}", e)
-    };
+    if let Err(e) = go() {
+        let _ = write!(std::io::stderr(), "unpackrs: {}\n", e);
+        process::exit(-1);
+    }
 
-    for arg in args_os().skip(1) {
-        unpack(&formats, arg.as_ref()).unwrap();
+    fn go() -> Result<(), UnpackError> {
+        let formats = try!(config::load());
+
+        for arg in args_os().skip(1) {
+            try!(unpack(&formats, arg.as_ref()));
+        }
+        Ok(())
     }
 }
