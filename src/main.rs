@@ -37,6 +37,9 @@ impl BadFormat {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MissingOperand;
+
 error_type! {
     #[derive(Debug)]
     pub enum UnpackError {
@@ -57,7 +60,15 @@ error_type! {
             desc (_e) "child exited unsuccessfully";
         },
         Config(config::ConfigLoadError) {
-        }
+            desc (_e) "couldn't load configuration";
+            disp (e, fmt)
+                write!(fmt, "couldn't load configuration: {}", e);
+        },
+        MissingOperand(MissingOperand) {
+            desc (_e) "missing operand";
+            disp (_e, fmt)
+                write!(fmt, "missing operand");
+        },
     }
 }
 
@@ -122,7 +133,13 @@ fn main() {
     fn go() -> Result<(), UnpackError> {
         let formats = try!(config::load());
 
-        for arg in args_os().skip(1) {
+        let args = args_os().skip(1);
+
+        if args.len() == 0 {
+            return Err(From::from(MissingOperand));
+        }
+
+        for arg in args {
             try!(unpack(&formats, arg.as_ref()));
         }
         Ok(())
