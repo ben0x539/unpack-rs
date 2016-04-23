@@ -53,9 +53,10 @@ error_type! {
                 write!(fmt, "bad path: {}", e.path.to_string_lossy());
         },
         Format(BadFormat) {
-            desc (_e) "bad format";
+            desc (_e) "bad file extension";
             disp (e, fmt)
-                write!(fmt, "bad format: {}", e.path.to_string_lossy());
+                write!(fmt, "don't know how to handle file extension: {}",
+                    e.path.to_string_lossy());
         },
         Child(std::process::ExitStatus) {
             desc (_e) "child exited unsuccessfully";
