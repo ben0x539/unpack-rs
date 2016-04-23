@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use std::env::args_os;
 use std::process;
 use std::fs::{read_dir, remove_dir, rename};
-use std::io::Write;
+use std::io::{Write, Cursor};
+use std::ffi::{OsStr, OsString};
 
 use tempdir::TempDir;
 
@@ -106,17 +107,51 @@ fn unpack(formats: &[UnpackFormat], path: &Path) -> Result<(), UnpackError> {
         }
     }
 
+    fn find_suitable_name<'a>(base: &'a OsStr, os_string: &'a mut OsString)
+    -> &'a OsStr {
+
+        fn exists(s: &OsStr) -> bool {
+            Path::symlink_metadata(s.as_ref()).is_ok()
+        }
+
+        if exists(base) {
+            let mut buf = [0; 24];
+            let mut buf = Cursor::new(&mut buf[..]);
+            for counter in 2u32 .. {
+                os_string.clear();
+                os_string.push(base);
+
+                buf.set_position(0);
+                write!(&mut buf, "_{}", counter).unwrap();
+                let suffix = &buf.get_ref()[0..(buf.position() as usize)];
+                os_string.push(std::str::from_utf8(suffix).unwrap());
+
+                if !exists(os_string.as_ref()) {
+                    return &*os_string;
+                }
+            }
+
+            panic!("couldn't find suitable output name as all names formed \
+                    from the basename and a numeric suffix are already taken");
+        } else {
+            base
+        }
+    }
+
+    let mut buf = OsString::new();
     if let Some(entry) = single_entry {
-        let new_name = entry.components().next_back().unwrap().as_os_str();
+        let base_name = entry.components().next_back().unwrap().as_os_str();
+        let new_name = find_suitable_name(base_name, &mut buf);
         try!(rename(&entry, new_name));
         try!(remove_dir(dir.path()));
         println!("unpacked into \"{}\"", new_name.to_string_lossy());
     } else {
         let name_str = file_name.to_str().unwrap();
         let extension_offset = name_str.len() - format.extension.len();
-        let dest = &name_str[ .. extension_offset];
-        try!(rename(dir.path(), dest));
-        println!("unpacked into \"{}\"", dest);
+        let base_name = &name_str[ .. extension_offset];
+        let new_name = find_suitable_name(base_name.as_ref(), &mut buf);
+        try!(rename(dir.path(), new_name));
+        println!("unpacked into \"{}\"", new_name.to_string_lossy());
     }
     dir.into_path();
 
